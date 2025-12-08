@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- GRAFITO FONO SPALVA -->
-    <solid android:color="#1E1E1E" />
+    <!-- FONO SPALVA -->
+    <solid android:color="#FFFFFF" />  <!-- Balta -->
     
-    <!-- RAUDONAS RĖMELIS -->
+    <!-- RĖMELIS storis ir spalva-->
     <stroke 
         android:width="2dp"
-        android:color="#E53935" />
+        android:color="#E1BEE7" />
     
     <!-- APVALŪS KAMPAI -->
-    <corners android:radius="20dp" />
+    <corners android:radius="20dp" />  <!-- Kampų apvalumas -->
     
     <!-- VIDINĖS ATITARPOS -->
     <padding 

@@ -8,37 +8,36 @@
     android:padding="16dp"
     android:gravity="center">
 
-    <!-- PAVADINIMAS SU RAUDONA ŠIRDELE -->
+    <!-- PAVADINIMAS -->
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="❤️ Dienos žinutė"  
-        android:textColor="#E53935"
+        android:textColor="#9C27B0"      
         android:textSize="14sp"           
         android:textStyle="bold"
         android:layout_marginBottom="8dp" />
 
-    <!-- PATI ŽINUTĖ - BALTAS TEKSTAS -->
+    <!-- PATI ŽINUTĖ -->
     <TextView
         android:id="@+id/widget_message"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Kraunama..."
-        android:textColor="#FFFFFF"
+        android:textColor="#333333"       
         android:textSize="18sp"           
         android:gravity="center"         
         android:textStyle="italic"        
         android:maxLines="4"              
-        android:ellipsize="end" />
-
-    <!-- RAŠYTOJO VARDAS - PILKAS TEKSTAS -->
+        android:ellipsize="end" />        
+    <!-- RAŠYTOJO VARDAS -->
     <TextView
         android:id="@+id/widget_writer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text=""
-        android:textColor="#B0B0B0"
+        android:textColor="#666666"      
         android:textSize="12sp"          
         android:layout_marginTop="8dp" />
 
