@@ -4,6 +4,7 @@ import '../services/message_service.dart';
 import '../services/couple_service.dart';
 import '../widgets/error_boundary.dart';
 import 'dart:async'; // 🆕 PRIDĖTI TIMER
+import '../utils/responsive_utils.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -63,7 +64,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
 
     try {
+      // 🚀 1. Pirma gauname months (sinchroniškai) ir iškart rodom UI
       final months = MessageService.getMonths();
+      _months = months;
+      _initializeDaysMap();
+
+      // 🚀 2. Gauname writer code
       final writerCode = await _coupleService.getWriterCode();
 
       if (writerCode == null) {
@@ -71,6 +77,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
 
       _currentWriterCode = writerCode;
+
+      // 🚀 3. Parodome kalendorių PRIEŠ kraunant žinutes (greičiau!)
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _selectedMonth = DateTime.now().month;
+        });
+
+        // Scroll į dabartinį mėnesį
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToCurrentMonth();
+        });
+      }
+
+      // 🚀 4. Žinutes krauname FONE (vartotojas jau mato kalendorių)
+      _loadCustomMessagesInBackground(writerCode);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+      });
+    }
+  }
+
+  // 🆕 NAUJAS: Žinutės kraunamos fone
+  Future<void> _loadCustomMessagesInBackground(String writerCode) async {
+    try {
       final messageService = MessageService();
       final allCustomMessages = await messageService.getAllCustomMessages(
         writerCode,
@@ -79,27 +114,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (!mounted) return;
 
       setState(() {
-        _months = months;
         _customMessages.clear();
         _customMessages.addAll(allCustomMessages);
         _updateDaysWithCustomMessages();
-        _isLoading = false;
-        _selectedMonth = DateTime.now().month;
       });
-
-      final timer = Timer(const Duration(milliseconds: 50), () {
-        if (mounted) {
-          _scrollToCurrentMonth();
-        }
-      });
-      _timers.add(timer);
     } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _hasError = true;
-        _isLoading = false;
-      });
+      debugPrint('Error loading custom messages: $e');
+      // Nekritinė klaida - kalendorius vis tiek veikia
     }
   }
 
@@ -118,22 +139,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _scrollToCurrentMonth() {
-    if (_monthScrollController.hasClients) {
-      final currentMonthIndex = DateTime.now().month - 1;
-      final scrollPosition = currentMonthIndex * 100.0;
-      final timer = Timer(const Duration(milliseconds: 300), () {
-        // Po 300ms patikrinti ar dar mounted
-        if (mounted && _monthScrollController.hasClients) {
-          _monthScrollController.animateTo(
-            scrollPosition,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
+    if (!_monthScrollController.hasClients) return;
 
-      _timers.add(timer);
-    }
+    final currentMonthIndex = DateTime.now().month - 1;
+    final scrollPosition = currentMonthIndex * 100.0;
+
+    _monthScrollController.animateTo(
+      scrollPosition,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _changeMonth(int month) {
@@ -142,6 +157,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ResponsiveUtils.init(context);
     if (_isLoading) {
       return const Scaffold(
         body: Center(
@@ -748,6 +764,7 @@ class __MessageEditDialogState extends State<_MessageEditDialog> {
 
   @override
   Widget build(BuildContext context) {
+    ResponsiveUtils.init(context);
     return AlertDialog(
       title: Text(
         '${widget.day.dayOfMonth} ${MessageService.getMonthName(widget.day.date.month)}',
