@@ -1,0 +1,182 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========================================
+    // HELPER FUNCTIONS
+    // ========================================
+    
+    function isValidString(value, minLength, maxLength) {
+      return value is string 
+        && value.size() >= minLength 
+        && value.size() <= maxLength
+        && value.trim().size() >= minLength;
+    }
+    
+    function isValidCode(code, prefix) {
+      return code is string 
+        && code.matches('^' + prefix + '-[A-F0-9]{12}$');
+    }
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(coupleData) {
+      return isAuthenticated() 
+        && coupleData.userId == request.auth.uid;
+    }
+    
+    function isReader(coupleData) {
+      return isAuthenticated() 
+        && coupleData.readerJoined == true
+        && coupleData.readerUserId == request.auth.uid;
+    }
+    
+    function canAccessCouple(coupleData) {
+      return isOwner(coupleData) || isReader(coupleData);
+    }
+    
+    // ========================================
+    // READER CODES INDEX
+    // ========================================
+    
+    match /readerCodes/{readerCode} {
+      
+      // READ - Autentifikuoti su validžiu kodu
+      allow read: if 
+        isAuthenticated() &&
+        isValidCode(readerCode, 'R');
+      
+      // CREATE - Kartu su couple
+      allow create: if 
+        isAuthenticated() &&
+        isValidCode(readerCode, 'R') &&
+        isValidCode(request.resource.data.writerCode, 'W') &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['writerCode', 'createdBy', 'createdAt']);
+      
+      // UPDATE/DELETE - DRAUDŽIAMA
+      allow update, delete: if false;
+    }
+    
+    // ========================================
+    // COUPLES COLLECTION
+    // ========================================
+    
+    match /couples/{writerCode} {
+      
+      // ✅ READ - Owner, Reader, ARBA tas kas turi readerCode (dar neprisijungęs arba rejoin)
+      allow read: if 
+        isAuthenticated() &&
+        (
+          // Owner visada gali
+          isOwner(resource.data) ||
+          // Prisijungęs reader gali
+          isReader(resource.data) ||
+          // ✅ NAUJAS: Bet kas su readerCode gali skaityti aktyvią porą
+          // (reikalinga kad galėtų rejoin su nauju userId)
+          resource.data.isActive == true
+        );
+      
+      // CREATE - Griežtas validation
+      allow create: if 
+        isAuthenticated() &&
+        isValidCode(writerCode, 'W') &&
+        request.resource.data.writerCode == writerCode &&
+        isValidCode(request.resource.data.readerCode, 'R') &&
+        isValidString(request.resource.data.writerName, 2, 50) &&
+        !request.resource.data.writerName.matches('.*[<>].*') &&
+        !request.resource.data.writerName.matches('(?i).*(script|javascript|onclick).*') &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.isActive == true &&
+        request.resource.data.readerJoined == false &&
+        (!request.resource.data.keys().hasAny(['readerUserId']) || 
+         request.resource.data.readerUserId == null) &&
+        (!request.resource.data.keys().hasAny(['readerJoinedAt']) || 
+         request.resource.data.readerJoinedAt == null) &&
+        request.resource.data.createdAt != null &&
+        request.resource.data.lastUpdated != null;
+      
+      // ✅ UPDATE - 3 scenarijai
+      allow update: if 
+        isAuthenticated() &&
+        (
+          // SCENARIO 1: Writer atnaujina
+          (
+            isOwner(resource.data) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['isActive', 'lastUpdated'])
+          )
+          ||
+          // SCENARIO 2: Reader prisijungia PIRMĄ KARTĄ
+          (
+            resource.data.isActive == true &&
+            resource.data.readerJoined == false &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['readerJoined', 'readerUserId', 'readerJoinedAt', 'lastUpdated']) &&
+            request.resource.data.readerJoined == true &&
+            request.resource.data.readerUserId == request.auth.uid &&
+            request.resource.data.readerJoinedAt != null
+          )
+          ||
+          // ✅ SCENARIO 3: Reader REJOIN (atnaujina savo userId)
+          (
+            resource.data.isActive == true &&
+            resource.data.readerJoined == true &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['readerUserId', 'readerJoinedAt', 'lastUpdated']) &&
+            request.resource.data.readerUserId == request.auth.uid &&
+            request.resource.data.readerJoinedAt != null
+          )
+        );
+      
+      // DELETE - DRAUDŽIAMA
+      allow delete: if false;
+      
+      // ========================================
+      // MESSAGES SUBCOLLECTION
+      // ========================================
+      
+      match /messages/{dayNumber} {
+        
+        // READ - Owner arba reader
+        allow read: if 
+          isAuthenticated() &&
+          canAccessCouple(
+            get(/databases/$(database)/documents/couples/$(writerCode)).data
+          );
+        
+        // CREATE/UPDATE - Tik writer
+        allow create, update: if 
+          isAuthenticated() &&
+          isOwner(
+            get(/databases/$(database)/documents/couples/$(writerCode)).data
+          ) &&
+          int(dayNumber) >= 1 && 
+          int(dayNumber) <= 365 &&
+          request.resource.data.dayNumber == int(dayNumber) &&
+          isValidString(request.resource.data.content, 1, 500) &&
+          !request.resource.data.content.matches('.*[<>].*') &&
+          request.resource.data.writerCode == writerCode &&
+          request.resource.data.timestamp != null &&
+          request.resource.data.isCustom is bool;
+        
+        // DELETE - Tik writer
+        allow delete: if 
+          isAuthenticated() &&
+          isOwner(
+            get(/databases/$(database)/documents/couples/$(writerCode)).data
+          );
+      }
+    }
+    
+    // ========================================
+    // DEFAULT DENY ALL
+    // ========================================
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
