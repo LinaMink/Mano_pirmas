@@ -2,30 +2,11 @@ import 'package:flutter/material.dart';
 import '../services/couple_service.dart';
 import '../services/message_service.dart';
 import 'pairing_screen.dart';
+import '../services/message_cache.dart';
 import '../data/default_messages.dart';
 import '../widgets/error_boundary.dart';
 import '../widgets/daily_widget_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../utils/responsive_utils.dart';
-
-// 🎨 GRAFITO + RAUDONO AKCENTO SPALVŲ PALETĖ
-class AppColors {
-  // Grafito spalvos
-  static const Color graphiteBackground = Color(0xFF1E1E1E);
-  static const Color graphiteCard = Color(0xFF2C2C2C);
-  static const Color graphiteDark = Color(0xFF121212);
-  static const Color graphiteLight = Color(0xFF3D3D3D);
-
-  // Teksto spalvos
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFB0B0B0);
-  static const Color textMuted = Color(0xFF808080);
-
-  // Akcentas - raudona
-  static const Color accent = Color(0xFFE53935);
-  static const Color accentLight = Color(0xFFFF6659);
-  static const Color accentDark = Color(0xFFAB000D);
-}
 
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({super.key});
@@ -53,18 +34,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              const Icon(
-                Icons.widgets,
-                size: 48,
-                color: AppColors.accent,
-              ), // Raudona
+              const Icon(Icons.widgets, size: 48, color: Colors.purple),
               const SizedBox(height: 16),
               const Text(
                 'Žinutė namų ekrane',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.graphiteCard,
+                  color: Colors.purple,
                 ),
               ),
               const SizedBox(height: 8),
@@ -79,7 +56,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 icon: const Icon(Icons.add_to_home_screen),
                 label: const Text('Pridėti į namų ekraną'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.graphiteCard,
+                  backgroundColor: Colors.purple,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
                     vertical: 12,
@@ -182,13 +159,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
 
     try {
-      // 🚀 PARALELIAI gauname vardą ir kodą (greičiau!)
-      final results = await Future.wait([
-        _coupleService.getWriterName(),
-        _coupleService.getWriterCode(),
-      ]);
-      final name = results[0];
-      final writerCode = results[1];
+      final name = await _coupleService.getWriterName();
+      final writerCode = await _coupleService.getWriterCode();
 
       if (writerCode == null) {
         if (mounted) {
@@ -202,13 +174,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
         return;
       }
 
-      // 🚀 NEKRAUNAME CACHE IŠ NAUJO - tegul MessageService pats nusprendžia
-      // await MessageCache.clearCache();  // ← PAŠALINTA - lėtino!
+      await MessageCache.clearCache();
 
       final messageService = MessageService();
       final message = await messageService.getMessage(
         MessageService.todayDayNumber,
         writerCode,
+      );
+      // 🆕 ATNAUJINTI WIDGET'Ą
+      await _saveToWidget(message, name ?? 'Tavo mylimas');
+      await DailyWidgetManager.updateWidget(
+        message: message,
+        writerName: name ?? 'Tavo mylimas',
       );
 
       // Patikrinti ar žinutė yra custom (ne default)
@@ -217,7 +194,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
       final isCustom = message != defaultMessage;
 
-      // 🚀 PIRMA RODOME DUOMENIS, PASKUI ATNAUJINAME WIDGET'Ą FONE
       if (mounted) {
         setState(() {
           _writerName = name;
@@ -227,9 +203,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _isLoading = false;
         });
       }
-
-      // 🚀 Widget'ą atnaujiname FONE (neblokuoja UI)
-      _updateWidgetInBackground(message, name ?? 'Tavo mylimas');
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -241,27 +214,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  // 🆕 NAUJAS METODAS - widget atnaujinimas fone
-  void _updateWidgetInBackground(String message, String writerName) async {
-    try {
-      await _saveToWidget(message, writerName);
-      await DailyWidgetManager.updateWidget(
-        message: message,
-        writerName: writerName,
-      );
-    } catch (e) {
-      debugPrint('Widget update error (background): $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    ResponsiveUtils.init(context);
     return ErrorBoundary(
       fallback: Scaffold(
         appBar: AppBar(
           title: const Text('Kasdieninė žinutė'),
-          backgroundColor: AppColors.graphiteCard,
+          backgroundColor: Colors.purple,
         ),
         body: Center(
           child: Padding(
@@ -286,7 +245,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 ElevatedButton(
                   onPressed: _loadData,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.graphiteCard,
+                    backgroundColor: Colors.purple,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
                       vertical: 12,
@@ -302,8 +261,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Kasdieninė žinutė'),
-          backgroundColor: AppColors.graphiteDark,
-          foregroundColor: AppColors.textPrimary,
+          backgroundColor: Colors.purple.shade800,
           actions: [
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -391,41 +349,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 20),
-
-              // ❤️ ČIA PRIDĖKITE ŠIRDY SU ŠVYTĖJIMU ▼
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color.fromARGB(
-                        255,
-                        145,
-                        52,
-                        52,
-                      ).withAlpha(77),
-                      blurRadius: 30,
-                      spreadRadius: 10,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.favorite,
-                  size: 100,
-                  color: Color.fromARGB(255, 87, 15, 15),
-                ),
-              ),
+              const Icon(Icons.favorite, size: 100, color: Colors.purple),
               const SizedBox(height: 24),
 
               Card(
-                elevation: 8,
-                color: AppColors.graphiteCard,
+                elevation: 5,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: AppColors.accent.withAlpha(77), // Raudonas kraštas
-                    width: 1,
-                  ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -446,17 +376,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color.fromARGB(
-                            255,
-                            80,
-                            58,
-                            58,
-                          ).withAlpha(127),
+                          color: Colors.purple.shade50,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.accent.withAlpha(51),
-                            width: 1,
-                          ),
                         ),
                         child: Text(
                           _todayMessage ?? 'Tu esi geriausias! ❤️',
@@ -487,18 +408,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.accent.withAlpha(
-                                  51,
-                                ), // Pusiau permatoma raudona
+                                color: Colors.purple.shade100,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: AppColors.accent.withAlpha(127),
-                                  width: 1,
-                                ),
                               ),
-                              child: Text(
-                                'Asmeninė',
-                                style: TextStyle(color: AppColors.accent),
+                              child: const Text(
+                                'Asmeninė žinutė',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.purple,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                         ],
@@ -522,7 +441,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 16,
-                  color: const Color.fromARGB(255, 58, 9, 17),
+                  color: Colors.purple.shade800,
                   fontWeight: FontWeight.bold,
                 ),
               ),

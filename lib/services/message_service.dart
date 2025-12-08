@@ -83,7 +83,6 @@ class MessageService {
   }
 
   // ✅ SUBCOLLECTION VERSION - Gauti žinutę
-  // 🆕 Su dienos cache logika - žinutė atsinaujina tik vidurnaktį
   Future<String> getMessage(int dayNumber, String writerCode) async {
     if (kDebugMode) {
       debugPrint('🔍 Gaunama žinutė: day$dayNumber, writer: $writerCode');
@@ -107,25 +106,7 @@ class MessageService {
         return DefaultMessages.getMessage(dayNumber);
       }
 
-      // 🆕 1. Patikrinti ar tai šiandienos žinutė ir ar jau buvo rodyta
-      final isToday = dayNumber == todayDayNumber;
-
-      if (isToday) {
-        // Patikrinti dienos cache
-        final cachedDailyMessage = await MessageCache.getCachedDailyMessage(
-          dayNumber,
-          writerCode,
-        );
-
-        if (cachedDailyMessage != null) {
-          if (kDebugMode) {
-            debugPrint('✅ Naudojama cached dienos žinutė (ta pati diena)');
-          }
-          return cachedDailyMessage;
-        }
-      }
-
-      // 2. Tikrinti bendrą cache
+      // 1. Tikrinti cache
       final cachedMessages = await MessageCache.getMessages(writerCode);
       if (kDebugMode) {
         debugPrint('📦 Cache dydis: ${cachedMessages?.length ?? 0}');
@@ -134,20 +115,13 @@ class MessageService {
       if (cachedMessages != null &&
           cachedMessages.isNotEmpty &&
           cachedMessages.containsKey(dayNumber)) {
-        final message = cachedMessages[dayNumber]!;
-
-        // 🆕 Jei šiandienos žinutė - išsaugoti į dienos cache
-        if (isToday) {
-          await MessageCache.cacheDailyMessage(dayNumber, message, writerCode);
-        }
-
         if (kDebugMode) {
-          debugPrint('✅ Rasta cache: $message');
+          debugPrint('✅ Rasta cache: ${cachedMessages[dayNumber]}');
         }
-        return message;
+        return cachedMessages[dayNumber]!;
       }
 
-      // 3. ✅ SUBCOLLECTION: /couples/{writerCode}/messages/{dayNumber}
+      // 2. ✅ SUBCOLLECTION: /couples/{writerCode}/messages/{dayNumber}
       if (kDebugMode) {
         debugPrint('☁️ Kreipiamasi į Firestore subcollection...');
       }
@@ -173,16 +147,6 @@ class MessageService {
 
           // Išsaugoti į cache
           await MessageCache.saveSingleMessage(dayNumber, message, writerCode);
-
-          // 🆕 Jei šiandienos žinutė - išsaugoti į dienos cache
-          if (isToday) {
-            await MessageCache.cacheDailyMessage(
-              dayNumber,
-              message,
-              writerCode,
-            );
-          }
-
           return message;
         }
       } else {
@@ -191,14 +155,8 @@ class MessageService {
         }
       }
 
-      // 4. Default žinutė
+      // 3. Default žinutė
       final defaultMsg = DefaultMessages.getMessage(dayNumber);
-
-      // 🆕 Jei šiandienos žinutė - išsaugoti default į dienos cache
-      if (isToday) {
-        await MessageCache.cacheDailyMessage(dayNumber, defaultMsg, writerCode);
-      }
-
       if (kDebugMode) {
         debugPrint('⚡ Default: $defaultMsg');
       }
@@ -258,7 +216,6 @@ class MessageService {
   }
 
   // ✅ SUBCOLLECTION VERSION - Išsaugoti žinutę
-  // 🆕 Su 3 žinučių per dieną limitu
   Future<bool> saveCustomMessage({
     required String writerCode,
     required int dayNumber,
@@ -269,17 +226,7 @@ class MessageService {
         debugPrint('💾 Saugoma žinutė: day$dayNumber, writer: $writerCode');
       }
 
-      // 🆕 Patikrinti dienos limitą (max 3 žinutės per dieną)
-      final canWrite = await MessageCache.canWriteMessage(writerCode);
-      if (!canWrite) {
-        final remaining = await MessageCache.getRemainingWrites(writerCode);
-        if (kDebugMode) {
-          debugPrint('❌ Daily write limit exceeded. Remaining: $remaining');
-        }
-        return false;
-      }
-
-      // Rate limiting (trumpalaikis)
+      // Rate limiting
       if (!RateLimiter.checkWithConfig('save_message')) {
         if (kDebugMode) debugPrint('❌ Rate limit exceeded');
         return false;
@@ -333,15 +280,6 @@ class MessageService {
       // Išsaugoti į cache
       await MessageCache.saveSingleMessage(dayNumber, message, writerCode);
 
-      // 🆕 Padidinti dienos rašymo skaitliuką
-      await MessageCache.incrementWriteCount(writerCode);
-
-      // 🆕 Priverstinai atnaujinti skaitytojo dienos cache (kad matytų naują žinutę)
-      if (dayNumber == todayDayNumber) {
-        await MessageCache.forceDailyMessageRefresh();
-        await MessageCache.cacheDailyMessage(dayNumber, message, writerCode);
-      }
-
       // Analytics
       try {
         await AnalyticsService.logMessageEdited(
@@ -354,11 +292,7 @@ class MessageService {
       }
 
       if (kDebugMode) {
-        final remainingWrites = await MessageCache.getRemainingWrites(
-          writerCode,
-        );
         debugPrint('✅ Viskas išsaugota sėkmingai!');
-        debugPrint('📝 Liko žinučių šiandien: $remainingWrites');
       }
       return true;
     } catch (e, stack) {

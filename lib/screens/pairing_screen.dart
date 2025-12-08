@@ -6,7 +6,6 @@ import '../services/couple_service.dart';
 import '../services/error_handler.dart'; // ✅ PRIDĖTI
 import 'writer_screen.dart';
 import 'reader_screen.dart';
-import '../utils/responsive_utils.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -105,7 +104,6 @@ class _PairingScreenState extends State<PairingScreen> {
   @override
   @override
   Widget build(BuildContext context) {
-    ResponsiveUtils.init(context);
     // Rodyti kraunamą ekraną kol tikrinama
     if (_checkingPairing) {
       return const Scaffold(
@@ -180,33 +178,26 @@ class _PairingScreenState extends State<PairingScreen> {
   Widget _buildLogoSection() {
     return Column(
       children: [
-        Icon(
-          Icons.favorite,
-          size: ResponsiveUtils.iconXXL,
-          color: Colors.purple,
-        ),
-        SizedBox(height: ResponsiveUtils.spaceL),
-        Text(
+        const Icon(Icons.favorite, size: 80, color: Colors.purple),
+        const SizedBox(height: 16),
+        const Text(
           'LOVE MESSAGES',
           style: TextStyle(
-            fontSize: ResponsiveUtils.fontXXL,
+            fontSize: 28,
             fontWeight: FontWeight.bold,
             color: Colors.purple,
           ),
         ),
-        SizedBox(height: ResponsiveUtils.spaceS),
+        const SizedBox(height: 8),
         Text(
           _selectedRole == null
-              ? 'Pasirinkite savo'
+              ? 'Pasirinkite savo vaidmenį'
               : _selectedRole == 'writer'
               ? 'Sukurkite porą'
               : _selectedRole == 'writer_login'
               ? 'Prisijunkite kaip rašytojas'
               : 'Prisijunkite prie poros',
-          style: TextStyle(
-            fontSize: ResponsiveUtils.fontL,
-            color: Colors.purple.shade600,
-          ),
+          style: TextStyle(fontSize: 16, color: Colors.purple.shade600),
         ),
       ],
     );
@@ -723,8 +714,7 @@ Duokite skaitytojo kodą partneriui!''';
         }
 
         // Po 4 sekundžių pereiti į WriterScreen
-        // Po 1.5 sekundės pereiti į WriterScreen (užtenka perskaityti kodus)
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        Future.delayed(const Duration(seconds: 4), () {
           if (mounted) {
             Navigator.pushReplacement(
               context,
