@@ -48,24 +48,19 @@ class _PairingScreenState extends State<PairingScreen> {
       return;
     }
 
-    final isWriter = await _coupleService.isWriter();
+    // Paraleliai gauti duomenis (greičiau)
+    final results = await Future.wait([
+      _coupleService.isWriter(),
+      _coupleService.getWriterName(),
+    ]);
 
     if (!mounted) return;
 
-    final writerName = await _coupleService.getWriterName();
+    final isWriter = results[0] as bool;
+    final writerName = results[1] as String?;
 
-    if (!mounted) return;
-
-    // Automatiškai pereiti į atitinkamą ekraną
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _navigateToAppropriateScreen(isWriter, writerName);
-      }
-    });
-
-    if (mounted) {
-      setState(() => _checkingPairing = false);
-    }
+    // Iškart pereiti į atitinkamą ekraną
+    _navigateToAppropriateScreen(isWriter, writerName);
   }
 
   void _clearAllData() async {
@@ -713,15 +708,12 @@ Duokite skaitytojo kodą partneriui!''';
           debugPrint('Analytics error: $analyticsError');
         }
 
-        // Po 4 sekundžių pereiti į WriterScreen
-        Future.delayed(const Duration(seconds: 4), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const WriterScreen()),
-            );
-          }
-        });
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const WriterScreen()),
+          );
+        }
       } else {
         setState(() {
           _isLoading = false;
@@ -798,14 +790,12 @@ Duokite skaitytojo kodą partneriui!''';
         }
 
         // Po 2 sekundžių pereiti į ReaderScreen
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const ReaderScreen()),
-            );
-          }
-        });
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const ReaderScreen()),
+          );
+        }
       } else {
         setState(() {
           _isLoading = false;
@@ -892,14 +882,12 @@ Duokite skaitytojo kodą partneriui!''';
           debugPrint('Analytics error: $analyticsError');
         }
 
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const WriterScreen()),
-            );
-          }
-        });
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const WriterScreen()),
+          );
+        }
       } else {
         setState(() {
           _isLoading = false;

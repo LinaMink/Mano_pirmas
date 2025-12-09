@@ -4,6 +4,7 @@ import '../services/message_service.dart';
 import '../services/couple_service.dart';
 import '../widgets/error_boundary.dart';
 import 'dart:async'; // 🆕 PRIDĖTI TIMER
+import '../services/rate_limiter.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -673,6 +674,22 @@ class __MessageEditDialogState extends State<_MessageEditDialog> {
       return;
     }
 
+    // 🔒 TIKRINTI DIENOS LIMITĄ
+    final canEdit = await RateLimiter.canEditToday();
+    if (!canEdit) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              '❌ Pasiektas dienos limitas (3 redagavimai). Bandykite rytoj.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -694,6 +711,7 @@ class __MessageEditDialogState extends State<_MessageEditDialog> {
 
       if (success) {
         widget.onMessageSaved();
+        await RateLimiter.recordDailyEdit();
         if (mounted) {
           Navigator.pop(context, true);
         }

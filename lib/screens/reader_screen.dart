@@ -15,7 +15,8 @@ class ReaderScreen extends StatefulWidget {
   State<ReaderScreen> createState() => _ReaderScreenState();
 }
 
-class _ReaderScreenState extends State<ReaderScreen> {
+class _ReaderScreenState extends State<ReaderScreen>
+    with WidgetsBindingObserver {
   final CoupleService _coupleService = CoupleService();
   String? _writerName;
   String? _todayMessage;
@@ -24,51 +25,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   bool _isCustomMessage = false;
-  Widget _buildWidgetSection() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Card(
-        elevation: 3,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              const Icon(Icons.widgets, size: 48, color: Colors.purple),
-              const SizedBox(height: 16),
-              const Text(
-                'Žinutė namų ekrane',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.purple,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Pridėkite šią žinutę prie namų ekrano, kad matytumėte ją kiekvieną dieną be aplikacijos atidarymo.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: _showWidgetInstructions,
-                icon: const Icon(Icons.add_to_home_screen),
-                label: const Text('Pridėti į namų ekraną'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  int _lastLoadedDay = 0;
 
   Future<void> _saveToWidget(String message, String writerName) async {
     try {
@@ -142,8 +99,34 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Stebėti app lifecycle
     _initializeWidget();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Pašalinti observer
+    super.dispose();
+  }
+
+  /// Kai aplikacija grįžta į pirmą planą - tikrinti ar nauja diena
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAndRefreshIfNewDay();
+    }
+  }
+
+  /// Patikrinti ar pasikeitė diena ir atnaujinti jei reikia
+  void _checkAndRefreshIfNewDay() {
+    final currentDay = MessageService.todayDayNumber;
+    if (_lastLoadedDay != currentDay && _lastLoadedDay != 0) {
+      debugPrint(
+        '🌅 Nauja diena! Atnaujinama žinutė: $_lastLoadedDay -> $currentDay',
+      );
+      _loadData();
+    }
   }
 
   Future<void> _initializeWidget() async {
@@ -201,6 +184,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _todayDayNumber = MessageService.todayDayNumber;
           _isCustomMessage = isCustom;
           _isLoading = false;
+          _lastLoadedDay =
+              MessageService.todayDayNumber; // Įsiminti užkrautą dieną
         });
       }
     } catch (e) {
@@ -273,23 +258,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'refresh',
                   child: Row(
                     children: [
-                      Icon(Icons.refresh, size: 20),
-                      SizedBox(width: 8),
-                      Text('Atnaujinti'),
+                      Icon(Icons.refresh, size: 20, color: Colors.purple),
+                      const SizedBox(width: 8),
+                      const Text('Atnaujinti'),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'logout',
                   child: Row(
                     children: [
-                      Icon(Icons.logout, size: 20),
-                      SizedBox(width: 8),
-                      Text('Atsijungti'),
+                      Icon(Icons.logout, size: 20, color: Colors.grey.shade700),
+                      const SizedBox(width: 8),
+                      const Text('Atsijungti'),
                     ],
                   ),
                 ),
@@ -348,9 +333,48 @@ class _ReaderScreenState extends State<ReaderScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(height: 20),
+              // 📱 KOMPAKTIŠKAS WIDGET BANNER
+              GestureDetector(
+                onTap: _showWidgetInstructions,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.purple.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.widgets,
+                        size: 16,
+                        color: Colors.purple.shade700,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Pridėti į namų ekraną',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.purple.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 12,
+                        color: Colors.purple.shade400,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               const Icon(Icons.favorite, size: 100, color: Colors.purple),
-              const SizedBox(height: 24),
 
               Card(
                 elevation: 5,
@@ -452,8 +476,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
               ),
 
               // 🆕 PRIDĖTI WIDGET SEKCIJĄ ČIA
-              const SizedBox(height: 40),
-              _buildWidgetSection(), // ← PRIDĖTA ŠITA LINIJA
+              const SizedBox(height: 20),
             ],
           ),
         ),

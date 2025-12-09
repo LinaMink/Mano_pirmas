@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Rate Limiter
 /// Riboja vartotojo veiksmus tam tikru laiko periodu
@@ -11,11 +12,6 @@ class RateLimiter {
   static final Map<String, DateTime> _lastActions = {};
 
   /// Patikrinti ar galima atlikti veiksmą (paprastas - cooldown based)
-  ///
-  /// [actionKey] - unikalus veiksmo identifikatorius (pvz. 'create_couple', 'save_message')
-  /// [cooldownSeconds] - kiek sekundžių reikia palaukti tarp veiksmų
-  ///
-  /// Returns: true jei galima, false jei per anksti
   static bool canPerformAction(String actionKey, {int cooldownSeconds = 5}) {
     final now = DateTime.now();
     final lastAction = _lastActions[actionKey];
@@ -49,13 +45,6 @@ class RateLimiter {
   }
 
   /// Patikrinti ar galima atlikti veiksmą (advanced - sliding window)
-  ///
-  /// [actionKey] - unikalus veiksmo identifikatorius
-  /// [maxAttempts] - maksimalus bandymų skaičius
-  /// [windowSeconds] - laiko langas sekundėmis
-  ///
-  /// Example: canPerformActionAdvanced('login', maxAttempts: 5, windowSeconds: 60)
-  ///   = max 5 bandymai per 60 sekundžių
   static bool canPerformActionAdvanced(
     String actionKey, {
     int maxAttempts = 5,
@@ -64,11 +53,9 @@ class RateLimiter {
     final now = DateTime.now();
     final history = _actionHistory[actionKey] ?? [];
 
-    // Išvalyti senus įrašus už lango
     final cutoffTime = now.subtract(Duration(seconds: windowSeconds));
     history.removeWhere((time) => time.isBefore(cutoffTime));
 
-    // Patikrinti ar viršytas limitas
     if (history.length >= maxAttempts) {
       if (kDebugMode) {
         debugPrint(
@@ -78,7 +65,6 @@ class RateLimiter {
       return false;
     }
 
-    // Pridėti dabartinį veiksmą
     history.add(now);
     _actionHistory[actionKey] = history;
 
@@ -110,7 +96,6 @@ class RateLimiter {
     final now = DateTime.now();
     final history = _actionHistory[actionKey] ?? [];
 
-    // Išvalyti senus įrašus
     final cutoffTime = now.subtract(Duration(seconds: windowSeconds));
     final recentHistory = history
         .where((time) => time.isAfter(cutoffTime))
@@ -119,7 +104,7 @@ class RateLimiter {
     return maxAttempts - recentHistory.length;
   }
 
-  /// Atstatyti rate limit tam tikram veiksmui (admin funkcija)
+  /// Atstatyti rate limit tam tikram veiksmui
   static void resetAction(String actionKey) {
     _lastActions.remove(actionKey);
     _actionHistory.remove(actionKey);
@@ -157,7 +142,7 @@ class RateLimiter {
     'login': RateLimitConfig(
       cooldownSeconds: 3,
       maxAttempts: 5,
-      windowSeconds: 300, // 5 minutes
+      windowSeconds: 300,
     ),
   };
 
@@ -165,16 +150,77 @@ class RateLimiter {
   static bool checkWithConfig(String actionKey) {
     final config = configs[actionKey];
     if (config == null) {
-      // Default: 5 second cooldown
       return canPerformAction(actionKey, cooldownSeconds: 5);
     }
 
-    // Naudoti advanced rate limiting su config
     return canPerformActionAdvanced(
       actionKey,
       maxAttempts: config.maxAttempts,
       windowSeconds: config.windowSeconds,
     );
+  }
+
+  // ==================== DIENOS LIMITAS (PERSISTENT) ====================
+
+  static const String _dailyEditCountKey = 'daily_edit_count';
+  static const String _dailyEditDateKey = 'daily_edit_date';
+  static const int maxDailyEdits = 3;
+
+  /// Patikrinti ar galima redaguoti šiandien
+  static Future<bool> canEditToday() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _getTodayString();
+    final savedDate = prefs.getString(_dailyEditDateKey);
+
+    if (savedDate != today) {
+      return true;
+    }
+
+    final editsCount = prefs.getInt(_dailyEditCountKey) ?? 0;
+    return editsCount < maxDailyEdits;
+  }
+
+  /// Gauti likusį redagavimų skaičių
+  static Future<int> getRemainingDailyEdits() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _getTodayString();
+    final savedDate = prefs.getString(_dailyEditDateKey);
+
+    if (savedDate != today) {
+      return maxDailyEdits;
+    }
+
+    final editsCount = prefs.getInt(_dailyEditCountKey) ?? 0;
+    return maxDailyEdits - editsCount;
+  }
+
+  /// Registruoti redagavimą
+  static Future<bool> recordDailyEdit() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _getTodayString();
+    final savedDate = prefs.getString(_dailyEditDateKey);
+
+    int editsCount;
+
+    if (savedDate != today) {
+      editsCount = 0;
+      await prefs.setString(_dailyEditDateKey, today);
+    } else {
+      editsCount = prefs.getInt(_dailyEditCountKey) ?? 0;
+    }
+
+    if (editsCount >= maxDailyEdits) {
+      return false;
+    }
+
+    await prefs.setInt(_dailyEditCountKey, editsCount + 1);
+    debugPrint('📝 Daily edit recorded: ${editsCount + 1}/$maxDailyEdits');
+    return true;
+  }
+
+  static String _getTodayString() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 }
 
@@ -200,29 +246,4 @@ class RateLimitException implements Exception {
 
   @override
   String toString() => message;
-}
-
-/// Helper Extension
-extension RateLimitedAction on Function {
-  /// Wrapper funkcija su rate limiting
-  Future<T> withRateLimit<T>(
-    String actionKey, {
-    int cooldownSeconds = 5,
-  }) async {
-    if (!RateLimiter.canPerformAction(
-      actionKey,
-      cooldownSeconds: cooldownSeconds,
-    )) {
-      final remaining = RateLimiter.getRemainingCooldown(
-        actionKey,
-        cooldownSeconds: cooldownSeconds,
-      );
-      throw RateLimitException(
-        'Per daug bandymų. Palaukite $remaining sekundžių.',
-        remaining,
-      );
-    }
-
-    return await this() as T;
-  }
 }

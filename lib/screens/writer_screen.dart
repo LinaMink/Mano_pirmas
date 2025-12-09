@@ -5,6 +5,9 @@ import 'calendar_screen.dart';
 import 'pairing_screen.dart';
 import '../widgets/loading_overlay.dart';
 import '../services/analytics_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/rate_limiter.dart';
+import '../services/message_cache.dart';
 
 class WriterScreen extends StatefulWidget {
   const WriterScreen({super.key});
@@ -21,6 +24,43 @@ class _WriterScreenState extends State<WriterScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCachedDataFirst();
+  }
+
+  /// Pirma užkrauti kešuotus duomenis (greita), tada atnaujinti iš Firebase
+  Future<void> _loadCachedDataFirst() async {
+    if (!mounted) return;
+
+    // 1. Iškart gauti lokalius duomenis (SharedPreferences - greita)
+    final prefs = await SharedPreferences.getInstance();
+    final cachedMessage = prefs.getString('writer_today_message');
+    final cachedWriterName = prefs.getString('writerName');
+    final cachedLastUpdate = prefs.getString('writer_last_update');
+
+    // Patikrinti ar kešas yra šios dienos
+    bool isTodayCache = false;
+    if (cachedLastUpdate != null) {
+      try {
+        final lastUpdate = DateTime.parse(cachedLastUpdate);
+        final now = DateTime.now();
+        isTodayCache =
+            lastUpdate.year == now.year &&
+            lastUpdate.month == now.month &&
+            lastUpdate.day == now.day;
+      } catch (_) {}
+    }
+
+    // Jei turime šios dienos kešą - iškart rodyti
+    if (cachedMessage != null && cachedMessage.isNotEmpty && isTodayCache) {
+      if (mounted) {
+        setState(() {
+          _todayMessage = cachedMessage;
+          _writerName = cachedWriterName;
+        });
+      }
+    }
+
+    // Visada atnaujinti iš Firebase fone
     _loadData();
   }
 
@@ -33,6 +73,14 @@ class _WriterScreenState extends State<WriterScreen> {
       final todayMessage = await messageService.getMessage(
         MessageService.todayDayNumber,
         writerCode.toString(),
+      );
+
+      // Išsaugoti į kešą kitam kartui
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('writer_today_message', todayMessage);
+      await prefs.setString(
+        'writer_last_update',
+        DateTime.now().toIso8601String(),
       );
 
       if (mounted) {
@@ -63,23 +111,23 @@ class _WriterScreenState extends State<WriterScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, size: 20),
-                    SizedBox(width: 8),
-                    Text('Atsijungti'),
+                    Icon(Icons.logout, size: 20, color: Colors.grey.shade700),
+                    const SizedBox(width: 8),
+                    const Text('Atsijungti'),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'new_couple',
                 child: Row(
                   children: [
-                    Icon(Icons.favorite_border, size: 20),
-                    SizedBox(width: 8),
-                    Text('Sukurti naują porą'),
+                    Icon(Icons.info_outline, size: 20, color: Colors.purple),
+                    const SizedBox(width: 8),
+                    const Text('Poros informacija'),
                   ],
                 ),
               ),
@@ -94,55 +142,6 @@ class _WriterScreenState extends State<WriterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                FutureBuilder<Map<String, dynamic>>(
-                  future: _coupleService.getPairingInfo(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: CircularProgressIndicator()),
-                        ),
-                      );
-                    }
-
-                    final info = snapshot.data ?? {};
-                    final writerCode = info['writerCode'] ?? 'Nėra';
-                    final readerCode = info['readerCode'] ?? 'Nėra';
-
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Jūsų poros informacija:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text('Rašytojo kodas: $writerCode'),
-                            Text('Skaitytojo kodas: $readerCode'),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Skaitytojo kodą duokite savo antrajai pusei.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 24),
-
                 const Text(
                   'Šiandienos žinutė:',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -235,54 +234,99 @@ class _WriterScreenState extends State<WriterScreen> {
     );
   }
 
-  void _showNewCoupleDialog() {
+  void _showNewCoupleDialog() async {
+    // Gauti poros informaciją
+    final info = await _coupleService.getPairingInfo();
+    final writerCode = info['writerCode'] ?? 'Nėra';
+    final readerCode = info['readerCode'] ?? 'Nėra';
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sukurti naują porą?'),
-        content: const Text(
-          'Tai atsijungs nuo dabartinės poros ir sukurs naują. '
-          'Dabartinės žinutės išliks, bet jas galės matyti tik dabartinė pora.',
+        title: const Text('Poros informacija'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Poros kodų informacija
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.purple.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.edit, size: 16, color: Colors.purple),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Rašytojo kodas:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      writerCode,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.menu_book,
+                          size: 16,
+                          color: Colors.purple,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Skaitytojo kodas:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      readerCode,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Skaitytojo kodą duokite savo antrajai pusei.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Atšaukti'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _logoutAndCreateNewCouple();
-            },
-            child: const Text('Sukurti naują'),
+            child: const Text('Uždaryti'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _logoutAndCreateNewCouple() async {
-    try {
-      await _coupleService.logout();
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const PairingScreen()),
-            (route) => false,
-          );
-        }
-      });
-    } catch (e) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Klaida: $e'), backgroundColor: Colors.red),
-          );
-        }
-      });
-    }
   }
 
   void _showLogoutDialog() {
@@ -371,7 +415,12 @@ class _WriterScreenState extends State<WriterScreen> {
           builder: (context) => _EditMessageDialog(
             initialMessage: currentMessage,
             coupleService: _coupleService,
-            onMessageSaved: () {
+            onMessageSaved: () async {
+              // Išvalyti kešą, kad gautume naują žinutę
+              final writerCode = await _coupleService.getWriterCode();
+              if (writerCode != null) {
+                await MessageCache.clearCache();
+              }
               _loadData();
             },
           ),
@@ -529,6 +578,22 @@ class __EditMessageDialogState extends State<_EditMessageDialog> {
       return;
     }
 
+    // 🔒 TIKRINTI DIENOS LIMITĄ
+    final canEdit = await RateLimiter.canEditToday();
+    if (!canEdit) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              '❌ Pasiektas dienos limitas (3 redagavimai). Bandykite rytoj.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     final writerCode = await widget.coupleService.getWriterCode();
@@ -551,6 +616,9 @@ class __EditMessageDialogState extends State<_EditMessageDialog> {
       }
 
       if (success && mounted) {
+        await RateLimiter.recordDailyEdit();
+        if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Žinutė sėkmingai išsaugota!'),

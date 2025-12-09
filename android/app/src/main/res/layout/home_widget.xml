@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_background"  
-    android:padding="16dp"
+    android:padding="12dp"
     android:gravity="center">
 
     <!-- PAVADINIMAS -->
@@ -26,11 +26,12 @@
         android:layout_height="wrap_content"
         android:text="Kraunama..."
         android:textColor="#333333"       
-        android:textSize="18sp"           
+        android:textSize="14sp"
         android:gravity="center"         
-        android:textStyle="italic"        
-        android:maxLines="4"              
-        android:ellipsize="end" />        
+        android:autoSizeTextType="uniform"
+        android:autoSizeMinTextSize="10sp"
+        android:autoSizeMaxTextSize="16sp"
+        android:autoSizeStepGranularity="1sp" />       
     <!-- RAŠYTOJO VARDAS -->
     <TextView
         android:id="@+id/widget_writer"
