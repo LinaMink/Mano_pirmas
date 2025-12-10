@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- FONO SPALVA -->
-    <solid android:color="#FFFFFF" />  <!-- Balta -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
     
-    <!-- RĖMELIS storis ir spalva-->
-    <stroke 
-        android:width="2dp"
-        android:color="#E1BEE7" />
+    <!-- Tamsus fonas su švelniu gradientu -->
+    <gradient
+        android:startColor="#2D3748"
+        android:endColor="#1A202C"
+        android:angle="135" />
     
-    <!-- APVALŪS KAMPAI -->
-    <corners android:radius="20dp" />  <!-- Kampų apvalumas -->
+    <!-- Užapvalinti kampai -->
+    <corners android:radius="16dp" />
     
-    <!-- VIDINĖS ATITARPOS -->
-    <padding 
-        android:left="8dp" 
-        android:top="8dp" 
-        android:right="8dp" 
-        android:bottom="8dp" />
+    <!-- Subtilus rėmelis -->
+    <stroke
+        android:width="1dp"
+        android:color="#4A5568" />
+        
 </shape>
